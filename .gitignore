@@ -13,10 +13,13 @@ Desktop.ini
 /Logs
 /Temp
 
-/Assets/StreamingAssets/FFmpegOut/Windows/ffmpeg.exe
-/Assets/StreamingAssets/FFmpegOut/macOS/ffmpeg
-/Assets/StreamingAssets/FFmpegOut/Linux/ffmpeg
+/Assets/StreamingAssets/FFmpegOut/*
 
 /*.mov
 /*.mp4
 /*.webm
+
+obj/
+*.csproj
+*.sln
+.idea/
