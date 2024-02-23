@@ -7,6 +7,7 @@ using System.Collections;
 namespace FFmpegOut
 {
     [AddComponentMenu("FFmpegOut/Camera Capture")]
+    [RequireComponent(typeof(Camera))]
     public sealed class CameraCapture : MonoBehaviour
     {
         #region Public properties
@@ -71,6 +72,7 @@ namespace FFmpegOut
         int _frameCount;
         float _startTime;
         int _frameDropCount;
+        private Camera _camera;
 
         float FrameTime {
             get { return _startTime + (_frameCount - 0.5f) / _frameRate; }
@@ -125,6 +127,8 @@ namespace FFmpegOut
 
         IEnumerator Start()
         {
+            _camera = GetComponent<Camera>();
+
             // Sync with FFmpeg pipe thread at the end of every frame.
             for (var eof = new WaitForEndOfFrame();;)
             {
@@ -140,27 +144,25 @@ namespace FFmpegOut
 
         void Update()
         {
-            var camera = GetComponent<Camera>();
-
             // Lazy initialization
             if (_session == null)
             {
                 // Give a newly created temporary render texture to the camera
                 // if it's set to render to a screen. Also create a blitter
                 // object to keep frames presented on the screen.
-                if (camera.targetTexture == null)
+                if (_camera.targetTexture == null)
                 {
-                    _tempRT = new RenderTexture(_width, _height, 24, GetTargetFormat(camera));
-                    _tempRT.antiAliasing = GetAntiAliasingLevel(camera);
-                    camera.targetTexture = _tempRT;
-                    _blitter = Blitter.CreateInstance(camera);
+                    _tempRT = new RenderTexture(_width, _height, 24, GetTargetFormat(_camera));
+                    _tempRT.antiAliasing = GetAntiAliasingLevel(_camera);
+                    _camera.targetTexture = _tempRT;
+                    _blitter = Blitter.CreateInstance(_camera);
                 }
 
                 // Start an FFmpeg session.
                 _session = FFmpegSession.Create(
                     gameObject.name,
-                    camera.targetTexture.width,
-                    camera.targetTexture.height,
+                    _camera.targetTexture.width,
+                    _camera.targetTexture.height,
                     _frameRate, preset, recordAudio
                 );
 
@@ -181,7 +183,7 @@ namespace FFmpegOut
             {
                 // Single-frame behind from the current time:
                 // Push the current frame to FFmpeg.
-                _session.PushFrame(camera.targetTexture);
+                _session.PushFrame(_camera.targetTexture);
                 _frameCount++;
             }
             else if (gap < delta * 2)
@@ -190,8 +192,8 @@ namespace FFmpegOut
                 // Push the current frame twice to FFmpeg. Actually this is not
                 // an efficient way to catch up. We should think about
                 // implementing frame duplication in a more proper way. #fixme
-                _session.PushFrame(camera.targetTexture);
-                _session.PushFrame(camera.targetTexture);
+                _session.PushFrame(_camera.targetTexture);
+                _session.PushFrame(_camera.targetTexture);
                 _frameCount += 2;
             }
             else
@@ -200,7 +202,7 @@ namespace FFmpegOut
                 WarnFrameDrop();
 
                 // Push the current frame to FFmpeg.
-                _session.PushFrame(camera.targetTexture);
+                _session.PushFrame(_camera.targetTexture);
 
                 // Compensate the time delay.
                 _frameCount += Mathf.FloorToInt(gap * _frameRate);

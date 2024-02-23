@@ -1,12 +1,14 @@
 // FFmpegOut - FFmpeg video encoding plugin for Unity
 // https://github.com/keijiro/KlakNDI
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Threading;
 using Unity.Collections;
+using Debug = UnityEngine.Debug;
 
 namespace FFmpegOut
 {
@@ -14,21 +16,23 @@ namespace FFmpegOut
     {
         #region Public methods
 
-        public static bool IsAvailable {
+        public static bool IsAvailable
+        {
             get { return System.IO.File.Exists(ExecutablePath); }
         }
 
         public FFmpegPipe(string arguments, bool recordAudio)
         {
             // Start FFmpeg subprocess.
-            if (recordAudio) {
+            if (recordAudio)
+            {
                 _audioPipeThread = new Thread(AudioPipeThread);
                 _audioPipeThread.Start();
-                _audioPing.WaitOne();
                 UnityEngine.Debug.Log("Audio Pipe Ready to stream.");
             }
 
-            _subprocess = Process.Start(new ProcessStartInfo {
+            _subprocess = Process.Start(new ProcessStartInfo
+            {
                 FileName = ExecutablePath,
                 Arguments = arguments,
                 UseShellExecute = false,
@@ -37,8 +41,8 @@ namespace FFmpegOut
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             });
-            
-            
+
+
             _subprocess.ErrorDataReceived += ProcessTheErrorData;
             _subprocess.BeginErrorReadLine();
 
@@ -47,14 +51,13 @@ namespace FFmpegOut
             _pipeThread = new Thread(PipeThread);
             _copyThread.Start();
             _pipeThread.Start();
-            
+
             void ProcessTheErrorData(object sender, DataReceivedEventArgs e)
             {
                 UnityEngine.Debug.LogError(e.Data);
             }
         }
 
-       
 
         public void PushFrameData(NativeArray<byte> data)
         {
@@ -63,20 +66,34 @@ namespace FFmpegOut
             _copyPing.Set();
         }
 
-        public void PushAudioData(float[] data, int channels) {
+        public void PushAudioData(float[] data, int channels)
+        {
             lock (_audioPipeQueue) _audioPipeQueue.Enqueue(data);
+            _audioReadyPing.Set();
         }
+
         public void SyncFrameData()
         {
             // Wait for the copy queue to get emptied with using pong
             // notification signals sent from the copy thread.
-            while (_copyQueue.Count > 0) _copyPong.WaitOne();
+            while (_copyQueue.Count > 0)
+            {
+                _copyPong.WaitOne();
+                Debug.LogWarning("_copyQueue.Count > 0");
+                //break;
+            }
 
             // When using a slower codec (e.g. HEVC, ProRes), frames may be
             // queued too much, and it may end up with an out-of-memory error.
             // To avoid this problem, we wait for pipe queue entries to be
             // comsumed by the pipe thread.
-            while (_pipeQueue.Count > 4) _pipePong.WaitOne();
+            while (_pipeQueue.Count > 4)
+            {
+                _pipePong.WaitOne();
+                
+                Debug.LogWarning("_pipeQueue.Count > 4");
+                //break;
+            }
         }
 
         public void CloseAndGetOutput()
@@ -89,7 +106,8 @@ namespace FFmpegOut
 
             _copyThread.Join();
             _pipeThread.Join();
-            if (_audioPipeThread != null) {
+            if (_audioPipeThread != null)
+            {
                 _audioPipeThread.Join();
             }
 
@@ -107,7 +125,6 @@ namespace FFmpegOut
             _copyQueue = null;
             _audioPipeThread = null;
             _pipeQueue = _freeBuffer = null;
-
         }
 
         #endregion
@@ -144,7 +161,7 @@ namespace FFmpegOut
         AutoResetEvent _pipePing = new AutoResetEvent(false);
         AutoResetEvent _pipePong = new AutoResetEvent(false);
 
-        AutoResetEvent _audioPing = new AutoResetEvent(false);
+        AutoResetEvent _audioReadyPing = new AutoResetEvent(false);
         bool _terminate;
 
         Queue<NativeArray<byte>> _copyQueue = new Queue<NativeArray<byte>>();
@@ -153,11 +170,10 @@ namespace FFmpegOut
         Queue<float[]> _audioPipeQueue = new Queue<float[]>();
         Queue<byte[]> _freeBuffer = new Queue<byte[]>();
 
-        byte[] _audioSendBuffer = new byte[192000];
-
         public static string ExecutablePath
         {
-            get {
+            get
+            {
                 var basePath = UnityEngine.Application.streamingAssetsPath;
                 var platform = UnityEngine.Application.platform;
 
@@ -199,7 +215,8 @@ namespace FFmpegOut
                     // Try allocating a buffer from the free buffer list.
                     byte[] buffer = null;
                     if (_freeBuffer.Count > 0)
-                        lock (_freeBuffer) buffer = _freeBuffer.Dequeue();
+                        lock (_freeBuffer)
+                            buffer = _freeBuffer.Dequeue();
 
                     // Copy the contents of the copy queue entry.
                     if (buffer == null || buffer.Length != source.Length)
@@ -222,7 +239,6 @@ namespace FFmpegOut
         // them into the FFmpeg pipe.
         void PipeThread()
         {
-            var writtenFrames = 0;
             var pipe = _subprocess.StandardInput.BaseStream;
             while (!_terminate)
             {
@@ -252,47 +268,46 @@ namespace FFmpegOut
 
                     // Add the buffer to the free buffer list to reuse later.
                     lock (_freeBuffer) _freeBuffer.Enqueue(buffer);
-                    _audioPing.Set();
-                    writtenFrames += 1;
                     _pipePong.Set();
                 }
             }
-            UnityEngine.Debug.Log("Video end, written "+(writtenFrames/15.0).ToString("F2")+"s");
+
         }
 
-        void AudioPipeThread() {
+        void AudioPipeThread()
+        {
             TcpListener server = new TcpListener(System.Net.IPAddress.Any, 50505);
-            BinaryWriter writer = new BinaryWriter(new MemoryStream(_audioSendBuffer));
             server.Start();
-            _audioPing.Set();
             // FFMPEG instance connected:
             TcpClient client = server.AcceptTcpClient();
             NetworkStream ns = client.GetStream();
-            double audioTimeRecorded = 0.0;
-            try {
-                while (!_terminate) {
-                    while (_audioPipeQueue.Count > 0) {
+
+            _audioReadyPing.WaitOne();
+            try
+            {
+                while (!_terminate)
+                {
+                    while (_audioPipeQueue.Count > 0)
+                    {
                         float[] audioBuffer;
                         lock (_audioPipeQueue) audioBuffer = _audioPipeQueue.Dequeue();
-                        writer.Seek(0, SeekOrigin.Begin);
-                        foreach (float sample in audioBuffer) {
-                            writer.Write(sample);
-                        }
-                        writer.Flush();
-                        ns.Write (_audioSendBuffer, 0, audioBuffer.Length*4);
-                        audioTimeRecorded += (audioBuffer.Length)/(44100.0*2);
-                        //_audioPing.WaitOne(); // TODO
+                        byte[] audioSendBuffer = new byte[audioBuffer.Length * 4];
+                        Buffer.BlockCopy(audioBuffer, 0, audioSendBuffer, 0, audioSendBuffer.Length);
+                        ns.Write(audioSendBuffer, 0, audioBuffer.Length * 4);
                     }
+
                     ns.Flush();
                 }
+
                 client.Close();
-            } catch (System.Exception e) {
-                UnityEngine.Debug.Log("Exception in AudioThread: "+e.ToString());
             }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.Log("Exception in AudioThread: " + e.ToString());
+            }
+
             client.Close();
-            writer.Close();
             server.Stop();
-            UnityEngine.Debug.Log("Audio end, written "+audioTimeRecorded.ToString("F2")+"s");
         }
 
         #endregion

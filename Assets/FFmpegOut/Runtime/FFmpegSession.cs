@@ -4,6 +4,8 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 using System.Collections.Generic;
+using System.Diagnostics;
+using Debug = UnityEngine.Debug;
 
 namespace FFmpegOut
 {
@@ -19,15 +21,14 @@ namespace FFmpegOut
         {
             name += System.DateTime.Now.ToString(" yyyy MMdd HHmmss");
             var path = name.Replace(" ", "_") + preset.GetSuffix();
-            double sampleRate = AudioSettings.outputSampleRate;
             return CreateWithOutputPath(path, width, height, frameRate, preset,
-                recordAudio, sampleRate);
+                recordAudio);
         }
 
         public static FFmpegSession CreateWithOutputPath(
             string outputPath,
             int width, int height, float frameRate,
-            FFmpegPreset preset, bool recordAudio, double sampleRate
+            FFmpegPreset preset, bool recordAudio
         )
         {
 /*
@@ -55,8 +56,11 @@ namespace FFmpegOut
             string audioOutputOptions = " "; // TODO: presets
             if (recordAudio) {
                 // add audio pipe
-                audioInputSpecification = " -f f32le -ac 2 -ar "
-                    + ((int) sampleRate).ToString() + " -thread_queue_size 512 -i " + audioPipeName;
+                
+                //,(int)AudioSettings.speakerMode,AudioSettings.outputSampleRate
+                audioInputSpecification = $" -f f32le -ac {(int)AudioSettings.speakerMode} -ar "+ AudioSettings.outputSampleRate
+                    + " -thread_queue_size 512 -i " 
+                    + audioPipeName;
                 audioOutputOptions = " -map 0:0 -map 1:0 -c:a aac -ac 2 ";
             }
             string args = "-y -f rawvideo -thread_queue_size 512 -vcodec rawvideo -pixel_format rgba"
@@ -69,6 +73,39 @@ namespace FFmpegOut
                 + preset.GetOptions()
                 + " \"" + outputPath + "\"";
             UnityEngine.Debug.Log(args);
+            return new FFmpegSession(args, recordAudio);
+        }
+
+        public static FFmpegSession CreateLiveStream(
+            string url, int width, int height, float frameRate,
+            bool recordAudio
+        )
+        {
+            string videoPipeName = "-";
+            string audioPipeName = "async:tcp://127.0.0.1:50505?timeout=5000000";
+            string audioInputSpecification = " ";
+            string audioOutputOptions = " "; // TODO: presets
+            if (recordAudio) {
+                // add audio pipe
+                
+                //,(int)AudioSettings.speakerMode,AudioSettings.outputSampleRate
+                audioInputSpecification = $" -f f32le -ac {(int)AudioSettings.speakerMode} -ar "+ AudioSettings.outputSampleRate
+                    + " -thread_queue_size 512 -i " 
+                    + audioPipeName;
+                audioOutputOptions = " -map 0:0 -map 1:0 -c:a aac -ac 2 ";
+            }
+
+            string args = "-y -f rawvideo -thread_queue_size 512 -vcodec rawvideo -pixel_format rgba"
+                          + " -colorspace bt709"
+                          + " -video_size " + width + "x" + height
+                          + " -framerate " + frameRate
+                          + " -loglevel warning -i " + videoPipeName
+                          + audioInputSpecification
+                          + audioOutputOptions
+                          + " -vcodec libx264 -pix_fmt yuv420p -preset:v ultrafast -tune:v zerolatency -f flv "
+                          + url;
+            UnityEngine.Debug.Log(args);
+
             return new FFmpegSession(args, recordAudio);
         }
 
@@ -85,14 +122,23 @@ namespace FFmpegOut
         {
             if (_pipe != null)
             {
+                _framePushed = true;
                 ProcessQueue();
                 if (source != null) QueueFrame(source);
+            }
+        }
+        
+        public void PushAudioBuffer(float[] buffer, int channels) {
+            
+            if (_pipe != null&&_framePushed)
+            {
+                _pipe.PushAudioData(buffer, channels);
             }
         }
 
         public void CompletePushFrames()
         {
-            _pipe?.SyncFrameData();
+            //_pipe?.SyncFrameData();
         }
 
         public void Close()
@@ -125,7 +171,8 @@ namespace FFmpegOut
         Material _blitMaterial;
 
         public readonly bool recordAudio;
-
+        private bool _framePushed;
+        
         FFmpegSession(string arguments, bool recordAudio)
         {
             this.recordAudio = recordAudio;
@@ -144,9 +191,6 @@ namespace FFmpegOut
                 _pipe = new FFmpegPipe(arguments, recordAudio);
         }
 
-        public void PushAudioBuffer(float[] buffer, int channels) {
-            _pipe.PushAudioData(buffer, channels);
-        }
 
         ~FFmpegSession()
         {
