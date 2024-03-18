@@ -102,7 +102,7 @@ namespace FFmpegOut
                           + " -loglevel warning -i " + videoPipeName
                           + audioInputSpecification
                           + audioOutputOptions
-                          + " -vcodec libx264 -pix_fmt yuv420p -preset:v ultrafast -tune:v zerolatency -f flv "
+                          + " -vcodec libx264 -pix_fmt yuv420p -preset:v ultrafast -tune:v zerolatency -x264opts keyint=50 -f flv " //-g 25
                           + url;
             UnityEngine.Debug.Log(args);
 
