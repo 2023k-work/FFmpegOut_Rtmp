@@ -1,7 +1,7 @@
 FFmpegOut_Rtmp
 =========
 
-**FFmpegOut_Rtmp** is forked from [keijiro/FFmpegOut](https://github.com/keijiro/FFmpegOut)
+**FFmpegOut_Rtmp** is forked from [keijiro/FFmpegOut](https://github.com/keijiro/FFmpegOut)  
 It's a Unity plugin that allows the Unity editor and applications to
 stream video to Twich and YouTube by using [FFmpeg] .
 
@@ -30,23 +30,10 @@ Download and import the following packages into your project.
 [FFmpegOutBinaries package]:
     https://github.com/keijiro/FFmpegOutBinaries/releases
 
-Camera Capture component
+RenderTextureLiveStream component
 ------------------------
 
-The **Camera Capture component** (`CameraCapture`) is used to capture frames
-rendered by an attached camera.
-
-![inspector](https://i.imgur.com/M4fxPov.png)
-
-It has a few properties for recording video: frame dimensions, preset and frame
-rate.
-
-[Application.targetFrameRate]:
-    https://docs.unity3d.com/ScriptReference/Application-targetFrameRate.html
-[QualitySettings.vSyncCount]:
-    https://docs.unity3d.com/ScriptReference/QualitySettings-vSyncCount.html
-[Time.captureFramerate]:
-    https://docs.unity3d.com/ScriptReference/Time-captureFramerate.html
+The **RenderTextureLiveStream component** (`RenderTextureLiveStream`) is used to capture RenderTexture and streaming.
 
 License
 -------
