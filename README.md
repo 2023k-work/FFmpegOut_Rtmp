@@ -8,10 +8,8 @@ stream video to Twich and YouTube by using [FFmpeg] .
 System Requirements
 -------------------
 
-- Unity 2018.3 or later
+- Unity 2021 or later
 - Windows: Direct3D 11
-- macOS: Metal
-- Linux: Vulkan
 
 FFmpegOut only supports desktop platforms.
 
@@ -37,8 +35,6 @@ The **RenderTextureLiveStream component** (`RenderTextureLiveStream`) is used to
 
 License
 -------
-
-[MIT](LICENSE.md)
 
 Note that the [FFmpegOutBinaries package] is not placed under this license. 
 When distributing an application with the package, it must be taken into
